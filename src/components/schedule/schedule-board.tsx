@@ -21,15 +21,28 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { copyPreviousWeek, deleteShift, moveShift, publishWeek, saveShift } from "@/lib/actions/modules";
-import { eachDate, formatGeorgianDate, isoWeekday, weekdayLabel } from "@/lib/dates";
-import { departmentSwatch, formatShiftHours, fullName } from "@/lib/format";
+import { eachDate, formatGeorgianDate, isoWeekday, todayInTimeZone, weekdayLabel } from "@/lib/dates";
+import { departmentSwatch, formatShiftHours, fullName, initials } from "@/lib/format";
 import type { WeekBoard } from "@/lib/demo/operations";
 import type { ShiftRow } from "@/types/database";
+import { cn } from "cn";
 
 const fieldClass =
   "h-11 w-full rounded-lg border border-input bg-card px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
-const shortDays = ["", "ორ", "სამ", "ოთხ", "ხუთ", "პარ", "შაბ", "კვი"];
+const shortDays = ["", "ორშაბათი", "სამშაბათი", "ოთხშაბათი", "ხუთშაბათი", "პარასკევი", "შაბათი", "კვირა"];
+
+const shiftTone: Record<string, string> = {
+  kitchen: "border-l-[#c2410c] bg-[#fff7ed] text-[#7c2d12]",
+  hall: "border-l-[#4d7c0f] bg-[#f7fee7] text-[#365314]",
+  bar: "border-l-[#1d4ed8] bg-[#eff6ff] text-[#1e3a8a]",
+  office: "border-l-[#78716c] bg-[#fafaf9] text-[#44403c]",
+  neutral: "border-l-primary bg-primary/5 text-foreground",
+};
+
+function toneFor(token: string | null | undefined) {
+  return shiftTone[token ?? "neutral"] ?? shiftTone.neutral;
+}
 
 type Draft = {
   id?: string;
@@ -50,6 +63,7 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
   const [copyOpen, setCopyOpen] = useState(false);
   const [mobileDay, setMobileDay] = useState(board.weekStart);
   const days = eachDate(board.weekStart, board.weekEnd);
+  const today = todayInTimeZone("Asia/Tbilisi");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const positionsFor = useMemo(
@@ -200,11 +214,14 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
                       <button
                         key={shift.id}
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-xl bg-muted px-3 py-2 text-left text-sm"
+                        className={cn(
+                          "flex w-full items-center justify-between gap-2 rounded-xl border border-transparent border-l-4 px-3 py-2 text-left text-sm shadow-sm",
+                          toneFor(shift.department?.color_token),
+                        )}
                         onClick={() => isAdmin && openEdit(shift)}
                       >
-                        <span className={`size-2.5 rounded-full ${departmentSwatch(shift.department?.color_token)}`} />
-                        {formatShiftHours(shift.start_time, shift.end_time)}
+                        <span className="font-semibold">{formatShiftHours(shift.start_time, shift.end_time)}</span>
+                        <span className="truncate text-xs opacity-80">{shift.department?.name}</span>
                       </button>
                     ))}
                   </div>
@@ -213,29 +230,61 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
             })}
           </div>
 
+          <div className="hidden flex-wrap gap-3 md:flex">
+            {board.departments.map((department) => (
+              <span key={department.id} className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <span className={cn("size-2.5 rounded-full", departmentSwatch(department.color_token))} />
+                {department.name}
+              </span>
+            ))}
+          </div>
+
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-            <div className="hidden overflow-x-auto rounded-2xl bg-card shadow-sm ring-1 ring-foreground/10 md:block">
-              <div className="grid min-w-[860px] grid-cols-[180px_repeat(7,minmax(0,1fr))]">
-                <div className="border-b border-r px-3 py-3 text-xs text-muted-foreground">თანამშრომელი</div>
-                {days.map((date) => (
-                  <div key={date} className="border-b px-2 py-3 text-center text-xs">
-                    <p className="font-medium">{shortDays[isoWeekday(date)]}</p>
-                    <p className="text-muted-foreground">{date.slice(8)}</p>
+            <div className="hidden overflow-hidden rounded-3xl bg-card shadow-sm ring-1 ring-foreground/10 md:block">
+              <div className="overflow-x-auto">
+                <div className="grid min-w-[1040px] grid-cols-[220px_repeat(7,minmax(7.5rem,1fr))]">
+                  <div className="sticky left-0 z-20 border-b border-r bg-muted/40 px-4 py-3 text-xs font-medium tracking-wide text-muted-foreground">
+                    თანამშრომელი
                   </div>
-                ))}
-                {board.employees.map((employee) => (
-                  <EmployeeRow
-                    key={employee.id}
-                    employeeName={fullName(employee)}
-                    position={employee.position?.name ?? ""}
-                    days={days}
-                    shifts={board.shifts.filter((shift) => shift.employee_id === employee.id)}
-                    employeeId={employee.id}
-                    canEdit={isAdmin}
-                    onEdit={openEdit}
-                    onCreate={(date) => openCreate(employee.id, date)}
-                  />
-                ))}
+                  {days.map((date) => {
+                    const weekday = isoWeekday(date);
+                    const isToday = date === today;
+                    return (
+                      <div
+                        key={date}
+                        className={cn(
+                          "border-b px-2 py-3 text-center",
+                          isToday && "bg-primary text-primary-foreground",
+                          !isToday && weekday >= 6 && "bg-muted/70",
+                          !isToday && weekday < 6 && "bg-muted/30",
+                        )}
+                      >
+                        <p className={cn("text-[11px]", isToday ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                          {shortDays[weekday]}
+                        </p>
+                        <p className="text-lg font-semibold leading-tight">{date.slice(8)}</p>
+                        {isToday ? <p className="text-[11px] font-medium">დღეს</p> : null}
+                      </div>
+                    );
+                  })}
+                  {board.employees.map((employee, index) => (
+                    <EmployeeRow
+                      key={employee.id}
+                      employeeName={fullName(employee)}
+                      initialsText={initials(employee.first_name, employee.last_name)}
+                      position={employee.position?.name ?? ""}
+                      departmentToken={employee.department?.color_token}
+                      days={days}
+                      today={today}
+                      striped={index % 2 === 1}
+                      shifts={board.shifts.filter((shift) => shift.employee_id === employee.id)}
+                      employeeId={employee.id}
+                      canEdit={isAdmin}
+                      onEdit={openEdit}
+                      onCreate={(date) => openCreate(employee.id, date)}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           </DndContext>
@@ -385,8 +434,12 @@ function shiftWeek(weekStart: string, days: number) {
 
 function EmployeeRow({
   employeeName,
+  initialsText,
   position,
+  departmentToken,
   days,
+  today,
+  striped,
   shifts,
   employeeId,
   canEdit,
@@ -394,8 +447,12 @@ function EmployeeRow({
   onCreate,
 }: {
   employeeName: string;
+  initialsText: string;
   position: string;
+  departmentToken?: string;
   days: string[];
+  today: string;
+  striped: boolean;
   shifts: ShiftRow[];
   employeeId: string;
   canEdit: boolean;
@@ -404,14 +461,24 @@ function EmployeeRow({
 }) {
   return (
     <>
-      <div className="border-r border-t px-3 py-3">
-        <p className="text-sm font-medium">{employeeName}</p>
-        <p className="text-xs text-muted-foreground">{position}</p>
+      <div className={cn("sticky left-0 z-10 border-r border-t px-3 py-3", striped ? "bg-muted/40" : "bg-card")}>
+        <div className="flex items-center gap-2.5">
+          <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white", departmentSwatch(departmentToken))}>
+            {initialsText}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{employeeName}</p>
+            <p className="truncate text-xs text-muted-foreground">{position}</p>
+          </div>
+        </div>
       </div>
       {days.map((date) => (
         <DayCell
           key={`${employeeId}-${date}`}
           id={`${employeeId}|${date}`}
+          date={date}
+          isToday={date === today}
+          striped={striped}
           shifts={shifts.filter((shift) => shift.shift_date === date)}
           canEdit={canEdit}
           onEdit={onEdit}
@@ -424,26 +491,46 @@ function EmployeeRow({
 
 function DayCell({
   id,
+  date,
+  isToday,
+  striped,
   shifts,
   canEdit,
   onEdit,
   onCreate,
 }: {
   id: string;
+  date: string;
+  isToday: boolean;
+  striped: boolean;
   shifts: ShiftRow[];
   canEdit: boolean;
   onEdit: (shift: ShiftRow) => void;
   onCreate: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !canEdit });
+  const weekend = isoWeekday(date) >= 6;
   return (
-    <div ref={setNodeRef} className={`min-h-24 space-y-1 border-t p-1.5 ${isOver ? "bg-primary/10" : ""}`}>
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "group min-h-28 space-y-1.5 border-t border-l border-foreground/10 p-1.5",
+        isToday && "bg-primary/10",
+        !isToday && weekend && "bg-muted/50",
+        !isToday && !weekend && striped && "bg-muted/20",
+        isOver && "bg-primary/15 ring-2 ring-inset ring-primary",
+      )}
+    >
       {shifts.map((shift) => (
         <ShiftChip key={shift.id} shift={shift} canEdit={canEdit} onEdit={() => onEdit(shift)} />
       ))}
       {canEdit ? (
-        <button type="button" className="w-full rounded-md px-1 py-1 text-left text-xs text-muted-foreground hover:bg-muted" onClick={onCreate}>
-          +
+        <button
+          type="button"
+          className="flex h-7 w-full items-center justify-center rounded-lg text-xs text-muted-foreground opacity-0 transition hover:bg-background group-hover:opacity-100"
+          onClick={onCreate}
+        >
+          + ცვლა
         </button>
       ) : null}
     </div>
@@ -456,16 +543,26 @@ function ShiftChip({ shift, canEdit, onEdit }: { shift: ShiftRow; canEdit: boole
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform) }}
-      className={`flex items-center gap-1 rounded-lg bg-muted px-1.5 py-1 text-xs ${isDragging ? "opacity-60" : ""}`}
+      className={cn(
+        "flex items-stretch overflow-hidden rounded-lg border border-black/5 border-l-4 shadow-sm",
+        toneFor(shift.department?.color_token),
+        isDragging && "opacity-70 shadow-md",
+      )}
     >
       {canEdit ? (
-        <button type="button" className="cursor-grab text-muted-foreground" aria-label="გადატანა" {...listeners} {...attributes}>
+        <button
+          type="button"
+          className="flex cursor-grab items-center px-0.5 text-current/50 hover:text-current"
+          aria-label="გადატანა"
+          {...listeners}
+          {...attributes}
+        >
           <GripVertical className="size-3.5" />
         </button>
       ) : null}
-      <button type="button" className="min-w-0 flex-1 truncate text-left" onClick={onEdit}>
-        <span className={`mr-1 inline-block size-2 rounded-full ${departmentSwatch(shift.department?.color_token)}`} />
-        {formatShiftHours(shift.start_time, shift.end_time)}
+      <button type="button" className="min-w-0 flex-1 px-1.5 py-1.5 text-left" onClick={onEdit}>
+        <span className="block text-[13px] font-semibold leading-tight">{formatShiftHours(shift.start_time, shift.end_time)}</span>
+        <span className="mt-0.5 block truncate text-[10px] leading-tight opacity-75">{shift.position?.name ?? shift.department?.name}</span>
       </button>
     </div>
   );
