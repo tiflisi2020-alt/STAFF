@@ -1,36 +1,143 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# პერსონალი
 
-## Getting Started
+რესტორნის თანამშრომლების მართვისა და სამუშაო გრაფიკის სისტემა.
 
-First, run the development server:
+ინტერფეისი ქართულადაა. მონაცემები, ავტორიზაცია და წვდომის წესები Supabase-ზეა. ცალკე backend სერვერი არ გამოიყენება.
+
+## ტექნოლოგიები
+
+- Next.js, React, TypeScript
+- Tailwind CSS, shadcn/ui
+- Supabase Auth, PostgreSQL, RLS, Realtime
+- React Hook Form, Zod
+- dnd-kit (გრაფიკის ეტაპზე)
+
+## ლოკალური გაშვება
+
+საჭიროა Node.js 20 ან უფრო ახალი.
+
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Windows PowerShell-ში:
+
+```powershell
+Copy-Item .env.example .env.local
+npm run dev
+```
+
+გახსენით `NEXT_PUBLIC_SITE_URL`-ში მითითებული მისამართი. ნაგულისხმევად ეს არის [http://localhost:3000](http://localhost:3000).
+
+## გარემოს ცვლადები
+
+| ცვლადი | სად | დანიშნულება |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | ბრაუზერი და სერვერი | Supabase პროექტის მისამართი |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ბრაუზერი და სერვერი | საჯარო anon გასაღები |
+| `SUPABASE_SERVICE_ROLE_KEY` | მხოლოდ სერვერი | სერვისის გასაღები. აპლიკაციის გვერდები მას არ იყენებს |
+| `NEXT_PUBLIC_SITE_URL` | ბრაუზერი და სერვერი | პაროლის აღდგენის ბმულის საბაზისო მისამართი |
+
+`SUPABASE_SERVICE_ROLE_KEY` არასდროს არ უნდა მოხვდეს კლიენტის კოდში ან `NEXT_PUBLIC_` ცვლადში.
+
+## Supabase
+
+1. შექმენით პროექტი [Supabase](https://supabase.com)-ში.
+2. Authentication → Providers: ჩართეთ Email.
+3. Authentication → URL Configuration:
+   - Site URL: თქვენი `NEXT_PUBLIC_SITE_URL`
+   - Redirect URLs: `http://localhost:3000/auth/callback` და Vercel-ის იგივე მისამართი
+4. დააკოპირეთ Project URL და anon key `.env.local`-ში.
+
+მონაცემთა ბაზის ცხრილები, RLS და საწყისი მონაცემები არის `supabase/migrations` საქაღალდეში.
+
+მიგრაციის გაშვება Supabase CLI-ით:
+
+```bash
+npx supabase link --project-ref your-project-ref
+npx supabase db push
+```
+
+პირველი ადმინისტრატორი:
+
+1. Supabase-ში გამორთეთ ღია რეგისტრაცია და შექმენით მომხმარებელი ელფოსტითა და პაროლით.
+2. SQL Editor-ში, service role-ით, გაუშვით:
+
+```sql
+select public.bootstrap_admin(
+  'USER_UUID',
+  '11111111-1111-4111-8111-111111111111'
+);
+```
+
+`USER_UUID` არის Authentication → Users-ში შექმნილი მომხმარებლის id. რესტორნის id საწყის მონაცემებშია და ეკუთვნის „თიფლისს“.
+
+## Vercel
+
+1. დააკავშირეთ GitHub რეპოზიტორია Vercel-თან.
+2. Framework Preset: Next.js.
+3. დაამატეთ იგივე გარემოს ცვლადები, რაც `.env.example`-შია.
+4. `NEXT_PUBLIC_SITE_URL` დააყენეთ პროდაქშენის მისამართზე, მაგალითად `https://your-app.vercel.app`.
+5. Supabase Redirect URLs-ში დაამატეთ `https://your-app.vercel.app/auth/callback`.
+
+ლოკალური მისამართი კოდში ჩაწერილი არ არის. პროდაქშენზე გამოიყენება `NEXT_PUBLIC_SITE_URL`, ხოლო თუ ის არ არის, Vercel-ის `VERCEL_URL`.
+
+## სკრიპტები
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run start
+npm run lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## არქიტექტურა
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+src/
+  app/
+    (auth)/                 შესვლა, პაროლის აღდგენა
+    (app)/                  დაცული გვერდები
+    auth/callback/          Supabase-ის დაბრუნების მისამართი
+  components/
+    ui/                     shadcn/ui
+    auth/
+    dashboard/              მთავარი გვერდი
+    employees/
+    schedule/
+    attendance/
+    requests/
+  lib/
+    supabase/               ბრაუზერის, სერვერის და proxy კლიენტები
+    auth/
+    validation/
+    scheduling/             კონფლიქტები, ღამის ცვლა, კვირის კოპირება
+    notifications/
+  hooks/
+  types/
+  proxy.ts                  სესიის განახლება და დაცული მისამართები
+supabase/
+  migrations/               ცხრილები, ინდექსები, RLS
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+როლები ინახება `profiles`-ში: `admin` და `employee`. წვდომა შემოწმდება Supabase RLS-ით, არა მხოლოდ ინტერფეისში.
 
-## Learn More
+## რა არის მზად
 
-To learn more about Next.js, take a look at the following resources:
+ეტაპი 1:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Next.js, TypeScript, Tailwind, shadcn/ui
+- Supabase კლიენტები
+- შესვლა, გასვლა, პაროლის აღდგენა
+- დაცული მისამართები
+- `.gitignore`, `.env.example`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+ეტაპი 2:
 
-## Deploy on Vercel
+- ცხრილები, კავშირები, ინდექსები და შეზღუდვები
+- RLS პოლიტიკები ადმინისტრატორისა და თანამშრომლისთვის
+- საწყისი რესტორანი, განყოფილებები, პოზიციები და სადემონსტრაციო თანამშრომლები
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+მიგრაცია ჯერ არ არის გაშვებული ცოცხალ Supabase პროექტზე. ფაილები უნდა გაეშვას ზემოთ აღწერილი ბრძანებით ან SQL Editor-ში, სახელების რიგით.
