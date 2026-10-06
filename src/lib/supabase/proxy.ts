@@ -6,7 +6,7 @@ import { getSupabasePublicEnv } from "@/lib/supabase/env";
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
 
 function isPublicPath(pathname: string) {
-  if (pathname.startsWith("/auth/")) {
+  if (pathname.startsWith("/auth/") || pathname === "/sw.js" || pathname === "/api/reminders") {
     return true;
   }
 

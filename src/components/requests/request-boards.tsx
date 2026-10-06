@@ -23,8 +23,7 @@ import { formatShiftHours, fullName } from "@/lib/format";
 import type { SwapView } from "@/lib/demo/operations";
 import type { Employee, ShiftRow, TimeOffRow, VacationRow } from "@/types/database";
 
-const fieldClass =
-  "h-11 w-full rounded-lg border border-input bg-card px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const fieldClass = "field";
 
 function useAction() {
   const router = useRouter();
@@ -67,7 +66,7 @@ export function TimeOffBoard({
       <PageHeader title={isAdmin ? "დასვენების მოთხოვნები" : "ჩემი მოთხოვნები"} description="ერთი კონკრეტული დღის დასვენება." />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <form
-        className="grid gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-foreground/10 md:grid-cols-4"
+        className="grid gap-3 surface p-4 md:grid-cols-4"
         onSubmit={(event) => {
           event.preventDefault();
           run(createTimeOff({ employeeId: lockedEmployeeId ?? employeeId, date, reason }));
@@ -104,7 +103,7 @@ export function TimeOffBoard({
       ) : (
         <div className="space-y-2">
           {requests.map((request) => (
-            <article key={request.id} className="flex flex-col gap-3 rounded-2xl bg-card px-4 py-3 shadow-sm ring-1 ring-foreground/10 sm:flex-row sm:items-center sm:justify-between">
+            <article key={request.id} className="surface flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-medium">{request.employee ? fullName(request.employee) : "თანამშრომელი"}</p>
                 <p className="text-sm text-muted-foreground">
@@ -117,7 +116,7 @@ export function TimeOffBoard({
                 {isAdmin && request.status === "pending" ? (
                   <>
                     <Button type="button" size="sm" disabled={pending} onClick={() => run(reviewTimeOff(request.id, "approved"))}>
-                      დადასტურება
+                      დამტკიცება
                     </Button>
                     <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => run(reviewTimeOff(request.id, "rejected"))}>
                       უარყოფა
@@ -156,7 +155,7 @@ export function VacationBoard({
       <PageHeader title="შვებულებები" description="რამდენიმე დღის შვებულების მოთხოვნა." />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <form
-        className="grid gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-foreground/10 md:grid-cols-2"
+        className="grid gap-3 surface p-4 md:grid-cols-2"
         onSubmit={(event) => {
           event.preventDefault();
           run(createVacation({ employeeId: lockedEmployeeId ?? employeeId, startDate, endDate, note }));
@@ -195,7 +194,7 @@ export function VacationBoard({
       ) : (
         <div className="space-y-2">
           {requests.map((request) => (
-            <article key={request.id} className="flex flex-col gap-3 rounded-2xl bg-card px-4 py-3 shadow-sm ring-1 ring-foreground/10 sm:flex-row sm:items-center sm:justify-between">
+            <article key={request.id} className="surface flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-medium">{request.employee ? fullName(request.employee) : "თანამშრომელი"}</p>
                 <p className="text-sm text-muted-foreground">
@@ -208,7 +207,7 @@ export function VacationBoard({
                 {isAdmin && request.status === "pending" ? (
                   <>
                     <Button type="button" size="sm" disabled={pending} onClick={() => run(reviewVacation(request.id, "approved"))}>
-                      დადასტურება
+                      დამტკიცება
                     </Button>
                     <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => run(reviewVacation(request.id, "rejected"))}>
                       უარყოფა
@@ -246,7 +245,7 @@ export function SwapBoard({
       <PageHeader title="ცვლის გაცვლა" description="ჯერ მიმღები ადასტურებს, შემდეგ მენეჯერი." />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <form
-        className="grid gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-foreground/10 md:grid-cols-2"
+        className="grid gap-3 surface p-4 md:grid-cols-2"
         onSubmit={(event) => {
           event.preventDefault();
           run(createSwap({ shiftId, targetEmployeeId }));
@@ -282,7 +281,7 @@ export function SwapBoard({
       ) : (
         <div className="space-y-2">
           {requests.map((request) => (
-            <article key={request.id} className="flex flex-col gap-3 rounded-2xl bg-card px-4 py-3 shadow-sm ring-1 ring-foreground/10 sm:flex-row sm:items-center sm:justify-between">
+            <article key={request.id} className="surface flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-medium">
                   {request.requester_name} → {request.target_name}

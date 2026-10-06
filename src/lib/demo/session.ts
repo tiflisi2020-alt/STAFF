@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { DEMO_COOKIE, createDemoToken, isDemoEnabled, isDemoToken } from "@/lib/demo/token";
+import { DEMO_COOKIE, accountFromDemoToken, createDemoToken, demoCredentials, isDemoEnabled, isDemoToken } from "@/lib/demo/token";
 
 export async function isDemoSession() {
   if (!isDemoEnabled()) {
@@ -10,14 +10,23 @@ export async function isDemoSession() {
   return isDemoToken(cookieStore.get(DEMO_COOKIE)?.value);
 }
 
-export async function setDemoSession() {
-  const token = createDemoToken();
+export async function currentDemoAccount() {
+  if (!isDemoEnabled()) {
+    return null;
+  }
+  const cookieStore = await cookies();
+  return accountFromDemoToken(cookieStore.get(DEMO_COOKIE)?.value);
+}
+
+export async function setDemoSession(email?: string) {
+  const token = createDemoToken(email ?? demoCredentials()?.email);
   if (!token) {
     return;
   }
+  const accountEmail = email ?? demoCredentials()?.email ?? "";
 
   const cookieStore = await cookies();
-  cookieStore.set(DEMO_COOKIE, token, {
+  cookieStore.set(DEMO_COOKIE, `${accountEmail}|${token}`, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",

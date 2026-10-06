@@ -39,6 +39,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-gold: var(--gold);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,38 +52,41 @@
 }
 
 :root {
-  --background: oklch(0.972 0.008 85);
-  --foreground: oklch(0.23 0.02 55);
-  --card: oklch(0.995 0.004 90);
-  --card-foreground: oklch(0.23 0.02 55);
-  --popover: oklch(0.995 0.004 90);
-  --popover-foreground: oklch(0.23 0.02 55);
-  --primary: oklch(0.36 0.055 155);
-  --primary-foreground: oklch(0.98 0.008 90);
-  --secondary: oklch(0.95 0.01 85);
-  --secondary-foreground: oklch(0.28 0.02 55);
-  --muted: oklch(0.95 0.01 85);
-  --muted-foreground: oklch(0.48 0.02 55);
-  --accent: oklch(0.94 0.014 85);
-  --accent-foreground: oklch(0.28 0.02 55);
-  --destructive: oklch(0.55 0.2 25);
-  --border: oklch(0.9 0.012 85);
+  --background: oklch(0.978 0.012 92);
+  --foreground: oklch(0.29 0.02 55);
+  --card: oklch(0.996 0.005 95);
+  --card-foreground: oklch(0.29 0.02 55);
+  --popover: oklch(0.996 0.005 95);
+  --popover-foreground: oklch(0.29 0.02 55);
+  --primary: oklch(0.34 0.055 158);
+  --primary-foreground: oklch(0.985 0.01 95);
+  --secondary: oklch(0.962 0.012 90);
+  --secondary-foreground: oklch(0.32 0.02 55);
+  --muted: oklch(0.955 0.012 90);
+  --muted-foreground: oklch(0.48 0.02 60);
+  --accent: oklch(0.948 0.016 92);
+  --accent-foreground: oklch(0.32 0.02 55);
+  --destructive: oklch(0.52 0.13 25);
+  --border: oklch(0.91 0.012 85);
   --input: oklch(0.9 0.012 85);
-  --ring: oklch(0.36 0.055 155);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.85rem;
-  --sidebar: oklch(0.985 0.006 90);
-  --sidebar-foreground: oklch(0.23 0.02 55);
-  --sidebar-primary: oklch(0.36 0.055 155);
-  --sidebar-primary-foreground: oklch(0.98 0.008 90);
-  --sidebar-accent: oklch(0.95 0.01 85);
-  --sidebar-accent-foreground: oklch(0.28 0.02 55);
-  --sidebar-border: oklch(0.9 0.012 85);
-  --sidebar-ring: oklch(0.36 0.055 155);
+  --ring: oklch(0.34 0.055 158);
+  --gold: oklch(0.62 0.07 75);
+  --warning: oklch(0.965 0.028 88);
+  --warning-foreground: oklch(0.42 0.05 65);
+  --chart-1: oklch(0.34 0.055 158);
+  --chart-2: oklch(0.62 0.07 75);
+  --chart-3: oklch(0.55 0.03 70);
+  --chart-4: oklch(0.45 0.02 55);
+  --chart-5: oklch(0.32 0.02 55);
+  --radius: 1rem;
+  --sidebar: oklch(0.992 0.006 95);
+  --sidebar-foreground: oklch(0.29 0.02 55);
+  --sidebar-primary: oklch(0.34 0.055 158);
+  --sidebar-primary-foreground: oklch(0.985 0.01 95);
+  --sidebar-accent: oklch(0.955 0.016 150);
+  --sidebar-accent-foreground: oklch(0.32 0.04 158);
+  --sidebar-border: oklch(0.91 0.012 85);
+  --sidebar-ring: oklch(0.34 0.055 158);
 }
 
 .dark {
@@ -123,10 +129,60 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    line-height: 1.6;
+    line-height: 1.65;
     text-rendering: optimizeLegibility;
   }
   html {
     @apply font-sans;
   }
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+}
+
+@layer components {
+  .surface {
+    border-radius: 1.125rem;
+    background-color: var(--card);
+    border: 1px solid color-mix(in oklch, var(--border) 85%, white);
+    box-shadow: 0 1px 1px rgba(48, 36, 22, 0.03), 0 12px 30px -24px rgba(48, 36, 22, 0.45);
+  }
+
+  .field {
+    height: 2.5rem;
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--input);
+    background-color: var(--card);
+    padding-inline: 0.75rem;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .field:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 22%, transparent);
+  }
+}
+
+@media print {
+  aside,
+  header,
+  .schedule-screen {
+    display: none !important;
+  }
+
+  .print-sheet {
+    display: block !important;
+  }
+
+  body {
+    background: white !important;
+  }
+}
+
+.print-sheet {
+  display: none;
 }

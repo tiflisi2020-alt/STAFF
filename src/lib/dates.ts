@@ -9,6 +9,22 @@ const WEEKDAY_LABELS = [
   "კვირა",
 ];
 
+const MONTH_LABELS = [
+  "",
+  "იანვარი",
+  "თებერვალი",
+  "მარტი",
+  "აპრილი",
+  "მაისი",
+  "ივნისი",
+  "ივლისი",
+  "აგვისტო",
+  "სექტემბერი",
+  "ოქტომბერი",
+  "ნოემბერი",
+  "დეკემბერი",
+];
+
 export function todayInTimeZone(timeZone: string) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -53,38 +69,20 @@ export function formatGeorgianDate(isoDate: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
     return isoDate;
   }
-  const [year, month, day] = isoDate.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day, 12));
-  return new Intl.DateTimeFormat("ka-GE", {
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  }).format(date);
+  const [, month, day] = isoDate.split("-").map(Number);
+  return `${day} ${MONTH_LABELS[month] ?? ""}`.trim();
 }
 
 export function formatGeorgianFullDate(isoDate: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
     return isoDate;
   }
-  const [year, month, day] = isoDate.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day, 12));
-  return new Intl.DateTimeFormat("ka-GE", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
+  const [year] = isoDate.split("-");
+  return `${weekdayLabel(isoWeekday(isoDate))}, ${formatGeorgianDate(isoDate)}, ${year}`;
 }
 
 export function formatTodayLabel(timeZone: string) {
-  return new Intl.DateTimeFormat("ka-GE", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone,
-  }).format(new Date());
+  return formatGeorgianFullDate(todayInTimeZone(timeZone));
 }
 
 export function eachDate(start: string, end: string) {

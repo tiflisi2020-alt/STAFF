@@ -1,9 +1,9 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { isDemoSession } from "@/lib/demo/session";
+import { currentDemoAccount, isDemoSession } from "@/lib/demo/session";
 import { demoUnreadCount } from "@/lib/demo/operations";
 import { demoRestaurantName } from "@/lib/demo/store";
-import { demoCredentials, DEMO_RESTAURANT_ID, DEMO_USER_ID } from "@/lib/demo/token";
+import { DEMO_RESTAURANT_ID } from "@/lib/demo/token";
 import { getCurrentUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import type { AppRole } from "@/types/auth";
@@ -29,19 +29,19 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
   }
 
   if (await isDemoSession()) {
-    const credentials = demoCredentials();
+    const account = await currentDemoAccount();
     return {
-      userId: DEMO_USER_ID,
-      email: credentials?.email ?? user.email ?? "",
+      userId: account?.userId ?? user.id,
+      email: account?.email ?? user.email ?? "",
       profile: {
-        id: DEMO_USER_ID,
+        id: account?.userId ?? user.id,
         restaurant_id: DEMO_RESTAURANT_ID,
-        role: "admin" as const,
-        full_name: credentials?.name ?? "მერაბ თამოევი",
+        role: account?.role ?? "employee",
+        full_name: account?.name ?? "",
       },
       restaurantName: demoRestaurantName(),
       timezone: "Asia/Tbilisi",
-      unreadCount: demoUnreadCount(),
+      unreadCount: demoUnreadCount(account?.employeeId ?? null, account?.role !== "employee"),
     };
   }
 

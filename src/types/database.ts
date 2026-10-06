@@ -45,7 +45,7 @@ export type ShiftRow = {
   start_time: string;
   end_time: string;
   status: ShiftStatus;
-  employee: { id: string; first_name: string; last_name: string } | null;
+  employee: { id: string; first_name: string; last_name: string; avatar_url?: string | null } | null;
   position: { name: string } | null;
   department: { name: string; color_token: string } | null;
 };

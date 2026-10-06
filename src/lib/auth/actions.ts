@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { clearDemoSession, setDemoSession } from "@/lib/demo/session";
-import { demoCredentials, isDemoEnabled, passwordMatches } from "@/lib/demo/token";
+import { findDemoAccount, isDemoEnabled, passwordMatches } from "@/lib/demo/token";
 import { mapAuthError, supabaseNotConfiguredMessage } from "@/lib/auth/errors";
 import { getSiteUrl } from "@/lib/site";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -25,18 +25,13 @@ export async function signIn(input: LoginValues): Promise<ActionResult> {
   }
 
   if (!isSupabaseConfigured()) {
-    const credentials = demoCredentials();
-    if (
-      isDemoEnabled() &&
-      credentials &&
-      parsed.data.email.trim().toLowerCase() === credentials.email &&
-      passwordMatches(parsed.data.password, credentials.password)
-    ) {
-      await setDemoSession();
+    const account = isDemoEnabled() ? findDemoAccount(parsed.data.email) : null;
+    if (account && passwordMatches(parsed.data.password, account.password)) {
+      await setDemoSession(account.email);
       redirect("/");
     }
 
-    return { error: credentials ? "ელფოსტა ან პაროლი არასწორია." : supabaseNotConfiguredMessage };
+    return { error: isDemoEnabled() ? "ელფოსტა ან პაროლი არასწორია." : supabaseNotConfiguredMessage };
   }
 
   const supabase = await createClient();

@@ -2,15 +2,21 @@
 
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, GripVertical, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -20,24 +26,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { copyPreviousWeek, deleteShift, moveShift, publishWeek, saveShift } from "@/lib/actions/modules";
+import { applyWeekTemplate, copyPreviousWeek, deleteShift, moveShift, publishWeek, saveShift, saveWeekTemplate } from "@/lib/actions/modules";
 import { eachDate, formatGeorgianDate, isoWeekday, todayInTimeZone, weekdayLabel } from "@/lib/dates";
 import { departmentSwatch, formatShiftHours, fullName, initials } from "@/lib/format";
 import type { WeekBoard } from "@/lib/demo/operations";
 import type { ShiftRow } from "@/types/database";
 import { cn } from "cn";
 
-const fieldClass =
-  "h-11 w-full rounded-lg border border-input bg-card px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const fieldClass = "field";
 
-const shortDays = ["", "ორშაბათი", "სამშაბათი", "ოთხშაბათი", "ხუთშაბათი", "პარასკევი", "შაბათი", "კვირა"];
+const shortDays = ["", "ორშ", "სამ", "ოთხ", "ხუთ", "პარ", "შაბ", "კვ"];
 
 const shiftTone: Record<string, string> = {
-  kitchen: "border-l-[#c2410c] bg-[#fff7ed] text-[#7c2d12]",
-  hall: "border-l-[#4d7c0f] bg-[#f7fee7] text-[#365314]",
-  bar: "border-l-[#1d4ed8] bg-[#eff6ff] text-[#1e3a8a]",
-  office: "border-l-[#78716c] bg-[#fafaf9] text-[#44403c]",
-  neutral: "border-l-primary bg-primary/5 text-foreground",
+  kitchen: "border-l-[#8d6b45] bg-[#f8f4ee] text-[#4a3b28]",
+  hall: "border-l-[#2f5d45] bg-[#f3f7f4] text-[#1e3a2c]",
+  bar: "border-l-[#6d5a45] bg-[#f7f4ef] text-[#3f3428]",
+  office: "border-l-[#7a736a] bg-[#f6f5f3] text-[#3d3935]",
+  neutral: "border-l-primary bg-primary/6 text-foreground",
 };
 
 function toneFor(token: string | null | undefined) {
@@ -56,12 +61,34 @@ type Draft = {
   notes: string;
 };
 
-export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: boolean }) {
+export function ScheduleBoard({
+  board,
+  isAdmin,
+  templates = [],
+  initialCreate = false,
+}: {
+  board: WeekBoard;
+  isAdmin: boolean;
+  templates?: { id: string; name: string; shiftCount: number }[];
+  initialCreate?: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [applyTemplateOpen, setApplyTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("ჩვეულებრივი კვირა");
+  const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
   const [mobileDay, setMobileDay] = useState(board.weekStart);
+  const [view, setView] = useState<"day" | "week" | "agenda">("week");
+  const created = useRef(false);
+
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      setView("day");
+    }
+  }, []);
   const days = eachDate(board.weekStart, board.weekEnd);
   const today = todayInTimeZone("Asia/Tbilisi");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -85,10 +112,30 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
       if (close) {
         setDraft(null);
         setCopyOpen(false);
+        setSaveTemplateOpen(false);
+        setApplyTemplateOpen(false);
       }
       router.refresh();
     });
   }
+
+  useEffect(() => {
+    if (!initialCreate || !isAdmin || created.current) {
+      return;
+    }
+    created.current = true;
+    const person = board.employees[0];
+    setDraft({
+      employeeId: "",
+      departmentId: person?.department_id ?? board.departments[0]?.id ?? "",
+      positionId: "",
+      shiftDate: board.weekStart,
+      startTime: "10:00",
+      endTime: "18:00",
+      breakMinutes: 0,
+      notes: "",
+    });
+  }, [board.departments, board.employees, board.weekStart, initialCreate, isAdmin]);
 
   function openCreate(employeeId = "", shiftDate = board.weekStart) {
     const person = board.employees.find((item) => item.id === employeeId);
@@ -134,46 +181,86 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
   const next = `/schedule?week=${shiftWeek(board.weekStart, 7)}`;
 
   return (
-    <div className="space-y-6">
+    <>
+    <PrintSheet board={board} />
+    <div className="schedule-screen space-y-6">
       <PageHeader
         title={isAdmin ? "გრაფიკი" : "ჩემი გრაფიკი"}
-        description={`${formatGeorgianDate(board.weekStart)} – ${formatGeorgianDate(board.weekEnd)}`}
         action={
-          isAdmin ? (
-            <Button type="button" className="h-11" onClick={() => openCreate()}>
-              ცვლის დამატება
-            </Button>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin ? (
+              <Button type="button" variant="outline" onClick={() => setCopyOpen(true)}>
+                წინა კვირის კოპირება
+              </Button>
+            ) : null}
+            {isAdmin ? (
+              <Button type="button" onClick={() => openCreate()}>
+                <Plus />
+                ახალი ცვლა
+              </Button>
+            ) : null}
+            {isAdmin ? (
+              <Button type="button" disabled={pending} onClick={() => run(publishWeek(board.weekStart), false)}>
+                გრაფიკის გამოქვეყნება
+              </Button>
+            ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger className={buttonVariants({ variant: "outline" })}>სხვა</DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {isAdmin ? <DropdownMenuItem onClick={() => setSaveTemplateOpen(true)}>შაბლონად შენახვა</DropdownMenuItem> : null}
+                {isAdmin ? <DropdownMenuItem onClick={() => setApplyTemplateOpen(true)}>შაბლონით შევსება</DropdownMenuItem> : null}
+                <DropdownMenuItem onClick={() => window.print()}>ბეჭდვა</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" render={<Link href={previous} />}>
-          წინა კვირა
-        </Button>
-        <Button variant="outline" render={<Link href="/schedule" />}>
-          ეს კვირა
-        </Button>
-        <Button variant="outline" render={<Link href={next} />}>
-          შემდეგი კვირა
-        </Button>
-        <StatusBadge status={board.status} />
-        {isAdmin ? (
-          <>
-            <Button type="button" variant="secondary" disabled={pending} onClick={() => run(publishWeek(board.weekStart), false)}>
-              გამოქვეყნება
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setCopyOpen(true)}>
-              წინა კვირის კოპირება
-            </Button>
-          </>
-        ) : null}
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="icon" aria-label="წინა კვირა" render={<Link href={previous} />}>
+            <ChevronLeft />
+          </Button>
+          <p className="min-w-44 text-center text-sm font-medium">
+            {formatGeorgianDate(board.weekStart)} – {formatGeorgianDate(board.weekEnd)}
+          </p>
+          <Button variant="outline" size="icon" aria-label="შემდეგი კვირა" render={<Link href={next} />}>
+            <ChevronRight />
+          </Button>
+          <Button variant="ghost" render={<Link href="/schedule" />}>
+            ეს კვირა
+          </Button>
+          <StatusBadge status={board.status} />
+        </div>
+        <div className="inline-flex w-fit shrink-0 rounded-xl bg-muted p-1">
+          {(
+            [
+              ["day", "დღე"],
+              ["week", "კვირა"],
+              ["agenda", "თვე"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-sm transition-colors",
+                view === value ? "bg-card font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setView(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {board.warnings.length > 0 ? (
-        <div className="space-y-2 rounded-2xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 ring-1 ring-amber-200">
+        <div className="surface divide-y divide-warning-foreground/10 overflow-hidden bg-warning text-sm leading-6 text-warning-foreground">
           {board.warnings.map((warning) => (
-            <p key={warning.id}>{warning.message}</p>
+            <p key={warning.id} className="px-4 py-2.5">
+              {warning.message}
+            </p>
           ))}
         </div>
       ) : null}
@@ -182,21 +269,32 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
         <EmptyState title="აქტიური თანამშრომელი არ არის" description="ჯერ დაამატეთ თანამშრომელი, შემდეგ დაგეგმეთ ცვლები." />
       ) : (
         <>
-          <div className="space-y-3 md:hidden">
-            <label className="block space-y-2">
-              <span className="text-sm font-medium">დღე</span>
-              <select className={fieldClass} value={mobileDay} onChange={(event) => setMobileDay(event.target.value)}>
-                {days.map((date) => (
-                  <option key={date} value={date}>
-                    {weekdayLabel(isoWeekday(date))} · {formatGeorgianDate(date)}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className={cn("space-y-3", view !== "day" && "hidden")}>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {days.map((date) => {
+                const active = mobileDay === date;
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    className={cn(
+                      "shrink-0 rounded-xl px-3 py-2 text-left",
+                      active ? "bg-primary text-primary-foreground" : "surface text-foreground",
+                    )}
+                    onClick={() => setMobileDay(date)}
+                  >
+                    <span className={cn("block text-[11px]", active ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                      {shortDays[isoWeekday(date)]}
+                    </span>
+                    <span className="text-sm font-medium">{date.slice(8)}</span>
+                  </button>
+                );
+              })}
+            </div>
             {board.employees.map((employee) => {
               const shifts = board.shifts.filter((shift) => shift.employee_id === employee.id && shift.shift_date === mobileDay);
               return (
-                <article key={employee.id} className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-foreground/10">
+                <article key={employee.id} className="surface p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="font-medium">{fullName(employee)}</p>
@@ -230,7 +328,45 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
             })}
           </div>
 
-          <div className="hidden flex-wrap gap-3 md:flex">
+          <div className={cn("space-y-3", view !== "agenda" && "hidden")}>
+            {days.map((date) => {
+              const dayShifts = board.shifts.filter((shift) => shift.shift_date === date && shift.status !== "cancelled");
+              return (
+                <section key={date} className="surface p-4">
+                  <div className="mb-3 flex items-baseline justify-between gap-3">
+                    <h3 className="font-medium">
+                      {weekdayLabel(isoWeekday(date))}
+                      <span className="ml-2 text-sm font-normal text-muted-foreground">{formatGeorgianDate(date)}</span>
+                    </h3>
+                    {date === today ? <span className="text-xs font-medium text-primary">დღეს</span> : null}
+                  </div>
+                  {dayShifts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">ცვლა არ არის</p>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {dayShifts.map((shift) => {
+                        const person = board.employees.find((employee) => employee.id === shift.employee_id);
+                        return (
+                          <button
+                            key={shift.id}
+                            type="button"
+                            className={cn("rounded-xl border border-transparent border-l-4 px-3 py-2.5 text-left", toneFor(shift.department?.color_token))}
+                            onClick={() => isAdmin && openEdit(shift)}
+                          >
+                            <span className="block text-sm font-medium">{person ? fullName(person) : "თანამშრომელი"}</span>
+                            <span className="mt-0.5 block text-sm">{formatShiftHours(shift.start_time, shift.end_time)}</span>
+                            <span className="block text-xs opacity-75">{shift.position?.name ?? shift.department?.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+
+          <div className={cn("flex flex-wrap gap-3", view !== "week" && "hidden")}>
             {board.departments.map((department) => (
               <span key={department.id} className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                 <span className={cn("size-2.5 rounded-full", departmentSwatch(department.color_token))} />
@@ -240,10 +376,10 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
           </div>
 
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-            <div className="hidden overflow-hidden rounded-3xl bg-card shadow-sm ring-1 ring-foreground/10 md:block">
+            <div className={cn("surface overflow-hidden", view !== "week" && "hidden")}>
               <div className="overflow-x-auto">
-                <div className="grid min-w-[1040px] grid-cols-[220px_repeat(7,minmax(7.5rem,1fr))]">
-                  <div className="sticky left-0 z-20 border-b border-r bg-muted/40 px-4 py-3 text-xs font-medium tracking-wide text-muted-foreground">
+                <div className="grid min-w-[1080px] grid-cols-[220px_repeat(7,minmax(7.5rem,1fr))] gap-px bg-border/70">
+                  <div className="sticky left-0 z-20 bg-muted/60 px-4 py-3 text-xs font-medium text-muted-foreground">
                     თანამშრომელი
                   </div>
                   {days.map((date) => {
@@ -253,17 +389,16 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
                       <div
                         key={date}
                         className={cn(
-                          "border-b px-2 py-3 text-center",
-                          isToday && "bg-primary text-primary-foreground",
-                          !isToday && weekday >= 6 && "bg-muted/70",
-                          !isToday && weekday < 6 && "bg-muted/30",
+                          "bg-card px-2 py-3 text-center",
+                          isToday && "bg-primary/10",
+                          !isToday && weekday >= 6 && "bg-muted/50",
                         )}
                       >
-                        <p className={cn("text-[11px]", isToday ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                        <p className={cn("text-[11px]", isToday ? "font-medium text-primary" : "text-muted-foreground")}>
                           {shortDays[weekday]}
                         </p>
                         <p className="text-lg font-semibold leading-tight">{date.slice(8)}</p>
-                        {isToday ? <p className="text-[11px] font-medium">დღეს</p> : null}
+                        {isToday ? <p className="text-[11px] font-medium text-primary">დღეს</p> : null}
                       </div>
                     );
                   })}
@@ -292,7 +427,7 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
       )}
 
       <Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{draft?.id ? "ცვლის რედაქტირება" : "ახალი ცვლა"}</DialogTitle>
             <DialogDescription>ღამის ცვლა დასაშვებია, თუ დასრულება დაწყებაზე ნაკლებია.</DialogDescription>
@@ -421,7 +556,99 @@ export function ScheduleBoard({ board, isAdmin }: { board: WeekBoard; isAdmin: b
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>კვირის შაბლონი</DialogTitle>
+            <DialogDescription>ეს კვირა ერთხელ ინახება და მერე სხვა კვირაში ერთი ღილაკით ივსება.</DialogDescription>
+          </DialogHeader>
+          <Input value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="მაგალითად, ჩვეულებრივი კვირა" />
+          <DialogFooter>
+            <Button type="button" disabled={pending} onClick={() => run(saveWeekTemplate(templateName, board.weekStart))}>
+              შენახვა
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={applyTemplateOpen} onOpenChange={setApplyTemplateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>შაბლონით შევსება</DialogTitle>
+            <DialogDescription>აირჩიეთ შენახული კვირა. იგივე სახელის შაბლონი ხელახლა შენახვისას ახლდება.</DialogDescription>
+          </DialogHeader>
+          <select className={fieldClass} value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+            {templates.length === 0 ? <option value="">შაბლონი ჯერ არ არის</option> : null}
+            {templates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name} · {template.shiftCount} ცვლა
+              </option>
+            ))}
+          </select>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending || !templateId}
+              onClick={() => run(applyWeekTemplate(templateId, board.weekStart, "merge"))}
+            >
+              დამატება
+            </Button>
+            <Button
+              type="button"
+              disabled={pending || !templateId}
+              onClick={() => run(applyWeekTemplate(templateId, board.weekStart, "replace"))}
+            >
+              ჩანაცვლება
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+    </>
+  );
+}
+
+function PrintSheet({ board }: { board: WeekBoard }) {
+  const days = eachDate(board.weekStart, board.weekEnd);
+  return (
+    <section className="print-sheet">
+      <h1 className="text-2xl font-semibold">
+        გრაფიკი · {formatGeorgianDate(board.weekStart)} – {formatGeorgianDate(board.weekEnd)}
+      </h1>
+      <table className="mt-4 w-full border-collapse text-sm">
+        <thead>
+          <tr>
+            <th className="border px-2 py-2 text-left">თანამშრომელი</th>
+            {days.map((day) => (
+              <th key={day} className="border px-2 py-2 text-left">
+                {weekdayLabel(isoWeekday(day))}
+                <br />
+                {formatGeorgianDate(day)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {board.employees.map((employee) => (
+            <tr key={employee.id}>
+              <td className="border px-2 py-2 font-medium">{fullName(employee)}</td>
+              {days.map((day) => {
+                const shifts = board.shifts.filter(
+                  (shift) => shift.employee_id === employee.id && shift.shift_date === day && shift.status !== "cancelled",
+                );
+                return (
+                  <td key={day} className="border px-2 py-2">
+                    {shifts.length > 0 ? shifts.map((shift) => formatShiftHours(shift.start_time, shift.end_time)).join(", ") : "—"}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
@@ -461,13 +688,16 @@ function EmployeeRow({
 }) {
   return (
     <>
-      <div className={cn("sticky left-0 z-10 border-r border-t px-3 py-3", striped ? "bg-muted/40" : "bg-card")}>
+      <div className={cn("sticky left-0 z-10 bg-card px-3 py-3", striped && "bg-muted/30")}>
         <div className="flex items-center gap-2.5">
-          <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white", departmentSwatch(departmentToken))}>
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">
             {initialsText}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{employeeName}</p>
+            <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+              <span className={cn("size-1.5 shrink-0 rounded-full", departmentSwatch(departmentToken))} />
+              <span className="truncate">{employeeName}</span>
+            </p>
             <p className="truncate text-xs text-muted-foreground">{position}</p>
           </div>
         </div>
@@ -514,11 +744,11 @@ function DayCell({
     <div
       ref={setNodeRef}
       className={cn(
-        "group min-h-28 space-y-1.5 border-t border-l border-foreground/10 p-1.5",
-        isToday && "bg-primary/10",
-        !isToday && weekend && "bg-muted/50",
+        "group min-h-28 space-y-1.5 bg-card p-1.5 transition-colors",
+        isToday && "bg-primary/[0.04]",
+        !isToday && weekend && "bg-muted/40",
         !isToday && !weekend && striped && "bg-muted/20",
-        isOver && "bg-primary/15 ring-2 ring-inset ring-primary",
+        isOver && "bg-primary/10 ring-2 ring-inset ring-primary/40",
       )}
     >
       {shifts.map((shift) => (
@@ -544,7 +774,7 @@ function ShiftChip({ shift, canEdit, onEdit }: { shift: ShiftRow; canEdit: boole
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform) }}
       className={cn(
-        "flex items-stretch overflow-hidden rounded-lg border border-black/5 border-l-4 shadow-sm",
+        "flex items-stretch overflow-hidden rounded-xl border border-black/5 border-l-[3px] shadow-[0_1px_2px_rgba(48,36,22,0.05)] transition-shadow hover:shadow-md",
         toneFor(shift.department?.color_token),
         isDragging && "opacity-70 shadow-md",
       )}
@@ -561,8 +791,8 @@ function ShiftChip({ shift, canEdit, onEdit }: { shift: ShiftRow; canEdit: boole
         </button>
       ) : null}
       <button type="button" className="min-w-0 flex-1 px-1.5 py-1.5 text-left" onClick={onEdit}>
-        <span className="block text-[13px] font-semibold leading-tight">{formatShiftHours(shift.start_time, shift.end_time)}</span>
-        <span className="mt-0.5 block truncate text-[10px] leading-tight opacity-75">{shift.position?.name ?? shift.department?.name}</span>
+        <span className="block text-[13px] font-medium leading-tight">{formatShiftHours(shift.start_time, shift.end_time)}</span>
+        <span className="mt-0.5 block truncate text-[11px] leading-tight opacity-75">{shift.position?.name ?? shift.department?.name}</span>
       </button>
     </div>
   );

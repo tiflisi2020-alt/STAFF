@@ -1,15 +1,14 @@
 import type { User } from "@supabase/supabase-js";
-import { isDemoSession } from "@/lib/demo/session";
-import { demoCredentials, DEMO_USER_ID } from "@/lib/demo/token";
+import { currentDemoAccount, isDemoSession } from "@/lib/demo/session";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
 export async function getCurrentUser() {
   if (await isDemoSession()) {
-    const credentials = demoCredentials();
+    const account = await currentDemoAccount();
     return {
-      id: DEMO_USER_ID,
-      email: credentials?.email ?? "",
+      id: account?.userId ?? "",
+      email: account?.email ?? "",
     } as User;
   }
 

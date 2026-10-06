@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { addDays, formatGeorgianDate, monthRange, todayInTimeZone, weekRange } from "@/lib/dates";
+import { addDays, formatGeorgianDate, isoWeekday, monthRange, todayInTimeZone, weekRange } from "@/lib/dates";
 import { fullName } from "@/lib/format";
 import { findScheduleWarnings, type ScheduleWarning } from "@/lib/scheduling/conflicts";
+import { summarizeWork } from "@/lib/scheduling/stats";
 import type {
   AttendanceStatus,
   AvailabilityRow,
@@ -79,7 +80,9 @@ export function toShiftRow(store: DemoStore, shift: StoredShift): ShiftRow {
     start_time: shift.start_time.slice(0, 5),
     end_time: shift.end_time.slice(0, 5),
     status: shift.status,
-    employee: person ? { id: person.id, first_name: person.first_name, last_name: person.last_name } : null,
+    employee: person
+      ? { id: person.id, first_name: person.first_name, last_name: person.last_name, avatar_url: person.avatar_url }
+      : null,
     position: position ? { name: position.name } : null,
     department: department ? { name: department.name, color_token: department.color_token } : null,
   };
@@ -94,9 +97,10 @@ function collectWarnings(store: DemoStore) {
   });
 }
 
-function notify(store: DemoStore, title: string, body: string) {
+function notify(store: DemoStore, title: string, body: string, employeeId?: string | null) {
   store.notifications.unshift({
     id: randomUUID(),
+    employee_id: employeeId ?? null,
     title,
     body,
     is_read: false,
@@ -104,8 +108,17 @@ function notify(store: DemoStore, title: string, body: string) {
   });
 }
 
-export function demoUnreadCount() {
-  return loadDemoStore().notifications.filter((item) => !item.is_read).length;
+function notificationVisible(employeeId: string | null | undefined, viewerId: string | null, isAdmin: boolean) {
+  if (isAdmin || !employeeId) {
+    return true;
+  }
+  return employeeId === viewerId;
+}
+
+export function demoUnreadCount(viewerId: string | null = null, isAdmin = true) {
+  return loadDemoStore().notifications.filter(
+    (item) => !item.is_read && notificationVisible(item.employee_id, viewerId, isAdmin),
+  ).length;
 }
 
 export function demoWeekBoard(weekStart: string): WeekBoard {
@@ -397,12 +410,15 @@ export function demoListSwaps(): SwapView[] {
     .sort((left, right) => right.created_at.localeCompare(left.created_at));
 }
 
-export function demoCreateSwap(input: { shiftId: string; targetEmployeeId: string }) {
+export function demoCreateSwap(input: { shiftId: string; targetEmployeeId: string; requesterEmployeeId?: string }) {
   const store = loadDemoStore();
   const shift = store.shifts.find((item) => item.id === input.shiftId && item.status !== "cancelled");
   const target = store.employees.find((item) => item.id === input.targetEmployeeId && item.is_active);
   if (!shift || !target) {
     return { error: "აირჩიეთ ცვლა და მიმღები თანამშრომელი." };
+  }
+  if (input.requesterEmployeeId && shift.employee_id !== input.requesterEmployeeId) {
+    return { error: "მხოლოდ საკუთარი ცვლის გაცვლა შეგიძლიათ." };
   }
   if (shift.employee_id === target.id) {
     return { error: "ცვლა საკუთარ თავზე ვერ გადაეცემა." };
@@ -523,19 +539,193 @@ export function demoSaveAttendance(input: {
   return { success: "დასწრება შეინახა." };
 }
 
-export function demoListNotifications() {
-  return loadDemoStore().notifications;
+export function demoListNotifications(viewerId: string | null = null, isAdmin = true) {
+  return loadDemoStore().notifications.filter((item) => notificationVisible(item.employee_id, viewerId, isAdmin));
 }
 
-export function demoMarkNotificationsRead(id?: string): DemoResult {
+export function demoMarkNotificationsRead(id?: string, viewerId: string | null = null, isAdmin = true): DemoResult {
   const store = loadDemoStore();
   for (const item of store.notifications) {
+    if (!notificationVisible(item.employee_id, viewerId, isAdmin)) {
+      continue;
+    }
     if (!id || item.id === id) {
       item.is_read = true;
     }
   }
   saveDemoStore(store);
   return { success: "შეტყობინება წაკითხულად მოინიშნა." };
+}
+
+export function demoListTemplates() {
+  return loadDemoStore().templates.map((template) => ({
+    id: template.id,
+    name: template.name,
+    shiftCount: template.shifts.length,
+  }));
+}
+
+export function demoSaveWeekTemplate(name: string, weekStart: string) {
+  const store = loadDemoStore();
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { error: "შაბლონს სახელი სჭირდება." };
+  }
+  const range = weekRange(weekStart);
+  const shifts = store.shifts
+    .filter((shift) => shift.shift_date >= range.start && shift.shift_date <= range.end && shift.status !== "cancelled")
+    .map((shift) => ({
+      employee_id: shift.employee_id,
+      department_id: shift.department_id,
+      position_id: shift.position_id,
+      day_of_week: isoWeekday(shift.shift_date),
+      start_time: shift.start_time.slice(0, 5),
+      end_time: shift.end_time.slice(0, 5),
+      break_minutes: shift.break_minutes,
+    }));
+  if (shifts.length === 0) {
+    return { error: "ამ კვირაში შესანახი ცვლა არ არის." };
+  }
+  const existing = store.templates.find((template) => template.name === trimmed);
+  if (existing) {
+    existing.shifts = shifts;
+  } else {
+    store.templates.push({ id: randomUUID(), name: trimmed, shifts });
+  }
+  saveDemoStore(store);
+  return { success: existing ? "შაბლონი განახლდა." : "შაბლონი შეინახა." };
+}
+
+export function demoApplyTemplate(templateId: string, weekStart: string, mode: "merge" | "replace") {
+  const store = loadDemoStore();
+  const template = store.templates.find((item) => item.id === templateId);
+  if (!template || template.shifts.length === 0) {
+    return { error: "შაბლონი ვერ მოიძებნა." };
+  }
+  const range = weekRange(weekStart);
+  if (mode === "replace") {
+    const ids = new Set(
+      store.shifts.filter((shift) => shift.shift_date >= range.start && shift.shift_date <= range.end).map((shift) => shift.id),
+    );
+    store.shifts = store.shifts.filter((shift) => !ids.has(shift.id));
+    store.swaps = store.swaps.filter((swap) => !ids.has(swap.shift_id) || swap.status === "approved");
+  }
+  let copied = 0;
+  for (const shift of template.shifts) {
+    const date = addDays(range.start, shift.day_of_week - 1);
+    const exists = store.shifts.some(
+      (item) =>
+        item.employee_id === shift.employee_id &&
+        item.shift_date === date &&
+        item.start_time.slice(0, 5) === shift.start_time &&
+        item.end_time.slice(0, 5) === shift.end_time &&
+        item.status !== "cancelled",
+    );
+    if (mode === "merge" && exists) {
+      continue;
+    }
+    store.shifts.push({
+      id: randomUUID(),
+      employee_id: shift.employee_id,
+      department_id: shift.department_id,
+      position_id: shift.position_id,
+      shift_date: date,
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      break_minutes: shift.break_minutes,
+      notes: null,
+      status: "draft",
+    });
+    copied += 1;
+  }
+  saveDemoStore(store);
+  return { success: copied > 0 ? `შაბლონიდან დაემატა ${copied} ცვლა.` : "ახალი ცვლა არ დაემატა. იგივე ცვლები უკვე არის." };
+}
+
+export function demoSavePushSubscription(input: {
+  employeeId: string | null;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}) {
+  const store = loadDemoStore();
+  const existing = store.pushSubscriptions.find((item) => item.endpoint === input.endpoint);
+  if (existing) {
+    existing.employee_id = input.employeeId;
+    existing.p256dh = input.p256dh;
+    existing.auth = input.auth;
+  } else {
+    store.pushSubscriptions.push({
+      id: randomUUID(),
+      employee_id: input.employeeId,
+      endpoint: input.endpoint,
+      p256dh: input.p256dh,
+      auth: input.auth,
+    });
+  }
+  saveDemoStore(store);
+  return { success: "ტელეფონის შეხსენება ჩაირთო." };
+}
+
+export function demoCollectDueReminders(timeZone: string) {
+  const store = loadDemoStore();
+  const now = Date.now();
+  const created: { employeeId: string; title: string; body: string; endpoint?: StoredPush }[] = [];
+  for (const shift of store.shifts) {
+    if (shift.status !== "published") {
+      continue;
+    }
+    const start = zonedDateTime(shift.shift_date, shift.start_time, timeZone);
+    const until = start - now;
+    if (until < 0 || until > 3 * 60 * 60 * 1000) {
+      continue;
+    }
+    const key = `${shift.id}:${shift.shift_date}`;
+    if (store.reminded.includes(key)) {
+      continue;
+    }
+    store.reminded.push(key);
+    const person = store.employees.find((item) => item.id === shift.employee_id);
+    const body = `${person ? fullName(person) : "თანამშრომელი"} · ${formatGeorgianDate(shift.shift_date)} · ${shift.start_time.slice(0, 5)}–${shift.end_time.slice(0, 5)}`;
+    notify(store, "ცვლა მალე იწყება", body, shift.employee_id);
+    const subscription = store.pushSubscriptions.find((item) => item.employee_id === shift.employee_id);
+    created.push({
+      employeeId: shift.employee_id,
+      title: "ცვლა მალე იწყება",
+      body,
+      endpoint: subscription,
+    });
+  }
+  if (created.length > 0) {
+    saveDemoStore(store);
+  }
+  return created;
+}
+
+type StoredPush = { endpoint: string; p256dh: string; auth: string };
+
+function zonedDateTime(isoDate: string, time: string, timeZone: string) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const [hour, minute] = time.slice(0, 5).split(":").map(Number);
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute);
+  const offset = timeZoneOffset(timeZone, utcGuess);
+  return utcGuess - offset;
+}
+
+function timeZoneOffset(timeZone: string, utcMillis: number) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(utcMillis));
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  const asUtc = Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), value("second"));
+  return asUtc - utcMillis;
 }
 
 export function demoSaveAvailability(
@@ -564,12 +754,32 @@ export function demoSaveAvailability(
   return { success: "ხელმისაწვდომობა შეინახა." };
 }
 
-export function demoDashboard(timeZone: string) {
+export function demoDashboard(timeZone: string, employeeId?: string) {
   const store = loadDemoStore();
   const today = todayInTimeZone(timeZone);
+  const week = weekRange(today);
   const shifts = store.shifts
-    .filter((shift) => shift.shift_date === today && shift.status !== "cancelled")
+    .filter((shift) => shift.shift_date === today && shift.status !== "cancelled" && (!employeeId || shift.employee_id === employeeId))
     .map((shift) => toShiftRow(store, shift));
+  const weekShifts = store.shifts
+    .filter(
+      (shift) =>
+        shift.shift_date >= week.start &&
+        shift.shift_date <= week.end &&
+        shift.status !== "cancelled" &&
+        (!employeeId || shift.employee_id === employeeId),
+    )
+    .map((shift) => toShiftRow(store, shift));
+  const attendanceRows = store.attendance.filter(
+    (row) => row.attendance_date >= week.start && row.attendance_date <= week.end && (!employeeId || row.employee_id === employeeId),
+  );
+  const attendance = { present: 0, late: 0, absent: 0 };
+  for (const row of attendanceRows) {
+    if (row.status === "present" || row.status === "late" || row.status === "absent") {
+      attendance[row.status] += 1;
+    }
+  }
+  const summary = summarizeWork(weekShifts);
   const working = new Set(shifts.map((shift) => shift.employee_id));
   const off = new Set<string>();
   for (const request of store.timeOff) {
@@ -611,19 +821,33 @@ export function demoDashboard(timeZone: string) {
       created_at: item.created_at,
     })),
   ].sort((left, right) => right.created_at.localeCompare(left.created_at));
-  const requests = allRequests.slice(0, 6);
-  const pending = allRequests.filter((item) =>
+  const viewerName = employeeId ? personName(store, employeeId) : "";
+  const visibleRequests = employeeId
+    ? allRequests.filter((item) => item.person === viewerName || item.detail === viewerName)
+    : allRequests;
+  const requests = visibleRequests.slice(0, 6);
+  const pending = visibleRequests.filter((item) =>
     ["pending", "pending_peer", "pending_manager"].includes(item.status),
   ).length;
+  const warnings = collectWarnings(store)
+    .filter((warning) => !employeeId || (viewerName && warning.message.includes(viewerName)))
+    .slice(0, 6);
 
   return {
-    employeeCount: store.employees.filter((item) => item.is_active).length,
+    employeeCount: employeeId ? 1 : store.employees.filter((item) => item.is_active).length,
     workingToday: working.size,
-    offToday: off.size,
+    offToday: employeeId ? (off.has(employeeId) ? 1 : 0) : off.size,
     requestCount: pending,
     shifts,
-    warnings: collectWarnings(store).slice(0, 6),
+    warnings,
     requests,
+    stats: {
+      weekStart: week.start,
+      weekEnd: week.end,
+      ...summary,
+      attendance,
+      attendanceRecorded: attendanceRows.length > 0,
+    },
     error: null,
   };
 }

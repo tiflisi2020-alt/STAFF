@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin, requireSession } from "@/lib/auth/context";
+import { getEmployeeByProfile } from "@/lib/data/employees";
 import { isDemoSession } from "@/lib/demo/session";
 import {
   demoCopyPreviousWeek,
@@ -10,8 +11,11 @@ import {
   demoCreateTimeOff,
   demoCreateVacation,
   demoDeleteShift,
+  demoApplyTemplate,
   demoMarkNotificationsRead,
   demoMoveShift,
+  demoSavePushSubscription,
+  demoSaveWeekTemplate,
   demoPublishWeek,
   demoRespondSwap,
   demoReviewSwap,
@@ -21,7 +25,7 @@ import {
   demoSaveAvailability,
   demoSaveShift,
 } from "@/lib/demo/operations";
-import { addDays, formatGeorgianDate, weekRange } from "@/lib/dates";
+import { addDays, formatGeorgianDate, isoWeekday, weekRange } from "@/lib/dates";
 import { userFacingError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import type { AttendanceStatus } from "@/types/database";
@@ -264,9 +268,22 @@ export async function copyPreviousWeek(weekStart: string, mode: "merge" | "repla
   }
 }
 
+async function employeeIdForRequest(requestedId: string) {
+  const context = await requireSession();
+  if (context.profile.role === "admin") {
+    return requestedId;
+  }
+  const ownId = await getEmployeeByProfile(context.userId);
+  return ownId ?? "";
+}
+
 export async function createTimeOff(input: { employeeId: string; date: string; reason?: string }): Promise<ModuleResult> {
   const context = await requireSession();
-  const parsed = z.object({ employeeId: z.string().uuid(), date: dateField, reason: z.string().max(300).optional() }).safeParse(input);
+  const employeeId = await employeeIdForRequest(input.employeeId);
+  const parsed = z.object({ employeeId: z.string().uuid(), date: dateField, reason: z.string().max(300).optional() }).safeParse({
+    ...input,
+    employeeId,
+  });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "შეამოწმეთ შეყვანილი მონაცემები." };
   if (await isDemoSession()) {
     const result = demoCreateTimeOff({ ...parsed.data, reason: parsed.data.reason?.trim() || null });
@@ -321,6 +338,7 @@ export async function createVacation(input: {
   note?: string;
 }): Promise<ModuleResult> {
   const context = await requireSession();
+  const employeeId = await employeeIdForRequest(input.employeeId);
   const parsed = z
     .object({
       employeeId: z.string().uuid(),
@@ -329,7 +347,7 @@ export async function createVacation(input: {
       note: z.string().max(300).optional(),
     })
     .refine((value) => value.endDate >= value.startDate, { message: "დასრულება დაწყებაზე ადრე ვერ იქნება." })
-    .safeParse(input);
+    .safeParse({ ...input, employeeId });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "შეამოწმეთ შეყვანილი მონაცემები." };
   if (await isDemoSession()) {
     const result = demoCreateVacation({ ...parsed.data, note: parsed.data.note?.trim() || null });
@@ -379,22 +397,25 @@ export async function reviewVacation(id: string, status: "approved" | "rejected"
 }
 
 export async function createSwap(input: { shiftId: string; targetEmployeeId: string }): Promise<ModuleResult> {
-  await requireSession();
+  const context = await requireSession();
   const parsed = z.object({ shiftId: z.string().uuid(), targetEmployeeId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { error: "აირჩიეთ ცვლა და მიმღები თანამშრომელი." };
+  const ownId = context.profile.role === "employee" ? await getEmployeeByProfile(context.userId) : null;
   if (await isDemoSession()) {
-    const result = demoCreateSwap(parsed.data);
+    const result = demoCreateSwap({ ...parsed.data, requesterEmployeeId: ownId ?? undefined });
     if (!result.error) {
       revalidatePath("/swaps");
       revalidatePath("/");
     }
     return result;
   }
-  const context = await requireSession();
   const supabase = await createClient();
   const shift = await supabase.from("shifts").select("employee_id").eq("id", parsed.data.shiftId).maybeSingle();
   if (!shift.data || shift.data.employee_id === parsed.data.targetEmployeeId) {
     return { error: "ცვლა საკუთარ თავზე ვერ გადაეცემა." };
+  }
+  if (ownId && shift.data.employee_id !== ownId) {
+    return { error: "მხოლოდ საკუთარი ცვლის გაცვლა შეგიძლიათ." };
   }
   const { error } = await supabase.from("shift_swap_requests").insert({
     restaurant_id: context.profile.restaurant_id,
@@ -546,7 +567,8 @@ export async function saveAttendance(input: {
 export async function markNotificationRead(id?: string): Promise<ModuleResult> {
   const context = await requireSession();
   if (await isDemoSession()) {
-    const result = demoMarkNotificationsRead(id);
+    const ownId = context.profile.role === "employee" ? await getEmployeeByProfile(context.userId) : null;
+    const result = demoMarkNotificationsRead(id, ownId, context.profile.role === "admin");
     revalidatePath("/notifications");
     revalidatePath("/", "layout");
     return result;
@@ -607,4 +629,74 @@ export async function saveAvailability(input: z.infer<typeof availabilitySchema>
   revalidatePath(`/employees/${parsed.data.employeeId}`);
   revalidatePath("/profile");
   return { success: "ხელმისაწვდომობა შეინახა." };
+}
+
+export async function saveWeekTemplate(name: string, weekStart: string): Promise<ModuleResult> {
+  const context = await requireAdmin();
+  if (await isDemoSession()) {
+    const result = demoSaveWeekTemplate(name, weekStart);
+    if (!result.error) revalidatePath("/schedule");
+    return result;
+  }
+  try {
+    const supabase = await createClient();
+    const range = weekRange(weekStart);
+    const source = await supabase
+      .from("shifts")
+      .select("employee_id, department_id, position_id, shift_date, start_time, end_time, break_minutes")
+      .gte("shift_date", range.start)
+      .lte("shift_date", range.end)
+      .neq("status", "cancelled");
+    if (source.error) return { error: userFacingError(source.error) };
+    if (!source.data?.length) return { error: "ამ კვირაში შესანახი ცვლა არ არის." };
+    const existing = await supabase.from("schedule_templates").select("id").eq("restaurant_id", context.profile.restaurant_id).eq("name", name.trim()).maybeSingle();
+    let templateId = existing.data?.id as string | undefined;
+    if (!templateId) {
+      const inserted = await supabase
+        .from("schedule_templates")
+        .insert({ restaurant_id: context.profile.restaurant_id, name: name.trim(), created_by: context.userId })
+        .select("id")
+        .single();
+      if (inserted.error || !inserted.data) return { error: userFacingError(inserted.error) };
+      templateId = inserted.data.id;
+    } else {
+      await supabase.from("schedule_template_shifts").delete().eq("template_id", templateId);
+    }
+    const rows = (source.data as Record<string, string | number>[]).map((shift) => ({
+      restaurant_id: context.profile.restaurant_id,
+      template_id: templateId,
+      employee_id: shift.employee_id,
+      department_id: shift.department_id,
+      position_id: shift.position_id,
+      day_of_week: isoWeekday(String(shift.shift_date)),
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      break_minutes: shift.break_minutes,
+    }));
+    const saved = await supabase.from("schedule_template_shifts").insert(rows);
+    if (saved.error) return { error: userFacingError(saved.error) };
+    revalidatePath("/schedule");
+    return { success: "შაბლონი შეინახა." };
+  } catch (error) {
+    return { error: userFacingError(error) };
+  }
+}
+
+export async function applyWeekTemplate(templateId: string, weekStart: string, mode: "merge" | "replace"): Promise<ModuleResult> {
+  await requireAdmin();
+  if (await isDemoSession()) {
+    const result = demoApplyTemplate(templateId, weekStart, mode);
+    if (!result.error) refreshSchedule();
+    return result;
+  }
+  return { error: "შაბლონის შევსება ამ რეჟიმში ჯერ მხოლოდ სატესტო ანგარიშით მუშაობს." };
+}
+
+export async function savePushSubscription(input: { endpoint: string; p256dh: string; auth: string }): Promise<ModuleResult> {
+  const context = await requireSession();
+  const employeeId = await getEmployeeByProfile(context.userId);
+  if (await isDemoSession()) {
+    return demoSavePushSubscription({ employeeId, ...input });
+  }
+  return { error: "ტელეფონის შეხსენება ჯერ სატესტო რეჟიმში ირთვება." };
 }

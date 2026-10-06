@@ -1,9 +1,10 @@
 import { isDemoSession } from "@/lib/demo/session";
 import { demoDashboard } from "@/lib/demo/operations";
-import { addDays, todayInTimeZone } from "@/lib/dates";
+import { addDays, todayInTimeZone, weekRange } from "@/lib/dates";
 import { one } from "@/lib/data/relations";
 import { userFacingError } from "@/lib/errors";
 import { findScheduleWarnings, type ScheduleWarning } from "@/lib/scheduling/conflicts";
+import { summarizeWork, type WorkStatRow } from "@/lib/scheduling/stats";
 import { createClient } from "@/lib/supabase/server";
 import type { ShiftRow, TimeOffRow, VacationRow } from "@/types/database";
 
@@ -17,6 +18,17 @@ export type DashboardRequest = {
   created_at: string;
 };
 
+export type WorkStats = {
+  weekStart: string;
+  weekEnd: string;
+  totalMinutes: number;
+  shiftCount: number;
+  byEmployee: WorkStatRow[];
+  byDepartment: WorkStatRow[];
+  attendance: { present: number; late: number; absent: number };
+  attendanceRecorded: boolean;
+};
+
 export type DashboardData = {
   employeeCount: number;
   workingToday: number;
@@ -25,12 +37,13 @@ export type DashboardData = {
   shifts: ShiftRow[];
   warnings: ScheduleWarning[];
   requests: DashboardRequest[];
+  stats: WorkStats;
   error: string | null;
 };
 
 const shiftSelect = `
   id, employee_id, shift_date, start_time, end_time, status,
-  employee:employees(id, first_name, last_name),
+  employee:employees(id, first_name, last_name, avatar_url),
   position:positions(name),
   department:departments(name, color_token)
 `;
@@ -58,21 +71,13 @@ function personName(value: { first_name?: string; last_name?: string } | null | 
 
 export async function getDashboard(timeZone: string, employeeId?: string): Promise<DashboardData> {
   if (await isDemoSession()) {
-    const data = demoDashboard(timeZone);
-    if (!employeeId) {
-      return data;
-    }
-    return {
-      ...data,
-      employeeCount: 1,
-      shifts: data.shifts.filter((shift) => shift.employee_id === employeeId),
-      requests: data.requests.filter((request) => request.person.length > 0),
-    };
+    return demoDashboard(timeZone, employeeId);
   }
 
   const supabase = await createClient();
   const today = todayInTimeZone(timeZone);
   const yesterday = addDays(today, -1);
+  const week = weekRange(today);
 
   let shiftQuery = supabase
     .from("shifts")
@@ -85,12 +90,30 @@ export async function getDashboard(timeZone: string, employeeId?: string): Promi
     shiftQuery = shiftQuery.eq("employee_id", employeeId);
   }
 
-  const [employeesResult, shiftsResult, timeOffResult, vacationResult, swapResult, pendingOff, pendingVacation, pendingSwap] =
+  let weekShiftQuery = supabase
+    .from("shifts")
+    .select(shiftSelect)
+    .gte("shift_date", week.start)
+    .lte("shift_date", week.end)
+    .neq("status", "cancelled");
+  let attendanceQuery = supabase
+    .from("attendance")
+    .select("status")
+    .gte("attendance_date", week.start)
+    .lte("attendance_date", week.end);
+  if (employeeId) {
+    weekShiftQuery = weekShiftQuery.eq("employee_id", employeeId);
+    attendanceQuery = attendanceQuery.eq("employee_id", employeeId);
+  }
+
+  const [employeesResult, shiftsResult, weekShiftsResult, attendanceResult, timeOffResult, vacationResult, swapResult, pendingOff, pendingVacation, pendingSwap] =
     await Promise.all([
     employeeId
       ? Promise.resolve({ count: null, error: null })
       : supabase.from("employees").select("id", { count: "exact", head: true }).eq("is_active", true),
     shiftQuery,
+    weekShiftQuery,
+    attendanceQuery,
     supabase
       .from("time_off_requests")
       .select("id, employee_id, request_date, reason, status, created_at, employee:employees(first_name, last_name)")
@@ -121,6 +144,8 @@ export async function getDashboard(timeZone: string, employeeId?: string): Promi
   const firstError =
     employeesResult.error ||
     shiftsResult.error ||
+    weekShiftsResult.error ||
+    attendanceResult.error ||
     timeOffResult.error ||
     vacationResult.error ||
     swapResult.error ||
@@ -202,6 +227,15 @@ export async function getDashboard(timeZone: string, employeeId?: string): Promi
 
   const workingIds = new Set(todayShifts.map((shift) => shift.employee_id));
   const employeeCount = employeesResult.count ?? (employeeId ? 1 : 0);
+  const weekShifts = ((weekShiftsResult.data ?? []) as Record<string, unknown>[]).map(mapShift);
+  const attendanceRows = (attendanceResult.data ?? []) as { status: string }[];
+  const attendance = { present: 0, late: 0, absent: 0 };
+  for (const row of attendanceRows) {
+    if (row.status === "present" || row.status === "late" || row.status === "absent") {
+      attendance[row.status] += 1;
+    }
+  }
+  const summary = summarizeWork(weekShifts);
 
   return {
     employeeCount,
@@ -211,6 +245,13 @@ export async function getDashboard(timeZone: string, employeeId?: string): Promi
     shifts: todayShifts,
     warnings,
     requests,
+    stats: {
+      weekStart: week.start,
+      weekEnd: week.end,
+      ...summary,
+      attendance,
+      attendanceRecorded: attendanceRows.length > 0,
+    },
     error: null,
   };
 }
@@ -224,6 +265,16 @@ function emptyDashboard(error: string): DashboardData {
     shifts: [],
     warnings: [],
     requests: [],
+    stats: {
+      weekStart: "",
+      weekEnd: "",
+      totalMinutes: 0,
+      shiftCount: 0,
+      byEmployee: [],
+      byDepartment: [],
+      attendance: { present: 0, late: 0, absent: 0 },
+      attendanceRecorded: false,
+    },
     error,
   };
 }

@@ -1,5 +1,6 @@
 import { AuthShell } from "@/components/auth/auth-shell";
 import { LoginForm } from "@/components/auth/login-form";
+import { demoStaffLogins, isDemoEnabled } from "@/lib/demo/token";
 
 export const metadata = {
   title: "შესვლა",
@@ -28,6 +29,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               : undefined
         }
         initialTone={passwordUpdated ? "success" : "error"}
+        staffLogins={isDemoEnabled() ? demoStaffLogins() : []}
       />
     </AuthShell>
   );

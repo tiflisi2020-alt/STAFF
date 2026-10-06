@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { MoreHorizontal, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
@@ -10,7 +11,13 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -27,8 +34,7 @@ import { departmentSwatch, fullName, initials } from "@/lib/format";
 import { employeeSchema, type EmployeeValues } from "@/lib/validation/employee";
 import type { Department, Employee, Position } from "@/types/database";
 
-const fieldClass =
-  "h-11 w-full rounded-lg border border-input bg-card px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const fieldClass = "field";
 
 type Filters = {
   q: string;
@@ -43,23 +49,26 @@ export function EmployeesManager({
   positions,
   filters,
   error,
+  startCreating = false,
 }: {
   employees: Employee[];
   departments: Department[];
   positions: Position[];
   filters: Filters;
   error: string | null;
+  startCreating?: boolean;
 }) {
-  const [editing, setEditing] = useState<Employee | null | undefined>(undefined);
+  const [editing, setEditing] = useState<Employee | null | undefined>(startCreating ? null : undefined);
   const [confirming, setConfirming] = useState<Employee | null>(null);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="თანამშრომლები"
-        description="მოძებნეთ, გაფილტრეთ და მართეთ რესტორნის გუნდი."
+        description="თანამშრომლების მართვა"
         action={
-          <Button type="button" size="lg" className="h-11" onClick={() => setEditing(null)}>
+          <Button type="button" onClick={() => setEditing(null)}>
+            <Plus />
             თანამშრომლის დამატება
           </Button>
         }
@@ -67,8 +76,8 @@ export function EmployeesManager({
 
       {error ? <p className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p> : null}
 
-      <form action="/employees" className="grid gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-foreground/10 md:grid-cols-4">
-        <label className="space-y-2 md:col-span-4">
+      <form action="/employees" className="surface grid gap-3 p-4 md:grid-cols-[1.4fr_1fr_1fr_0.8fr_auto] md:items-end">
+        <label className="space-y-2">
           <span className="text-sm font-medium">ძებნა</span>
           <Input name="q" defaultValue={filters.q} aria-label="თანამშრომლის ძებნა" />
         </label>
@@ -103,10 +112,10 @@ export function EmployeesManager({
           </select>
         </label>
         <div className="flex items-end gap-2">
-          <Button type="submit" variant="secondary" className="h-11">
+          <Button type="submit" variant="secondary">
             გაფილტვრა
           </Button>
-          <Link href="/employees" className="inline-flex h-11 items-center text-sm text-primary">
+          <Link href="/employees" className="inline-flex h-10 items-center text-sm text-primary">
             გასუფთავება
           </Link>
         </div>
@@ -115,8 +124,8 @@ export function EmployeesManager({
       {employees.length === 0 ? (
         <EmptyState title="თანამშრომელი ვერ მოიძებნა" description="შეცვალეთ ფილტრი ან დაამატეთ ახალი თანამშრომელი." />
       ) : (
-        <div className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/10">
-          <div className="hidden grid-cols-[1.5fr_1fr_1fr_0.8fr_auto] gap-3 border-b px-4 py-3 text-xs text-muted-foreground lg:grid">
+        <div className="surface overflow-hidden">
+          <div className="hidden grid-cols-[1.5fr_1fr_1fr_0.8fr_auto] gap-3 bg-muted/50 px-4 py-2.5 text-xs text-muted-foreground lg:grid">
             <span>თანამშრომელი</span>
             <span>პოზიცია</span>
             <span>განყოფილება</span>
@@ -125,7 +134,7 @@ export function EmployeesManager({
           </div>
           <div className="divide-y">
             {employees.map((employee) => (
-              <div key={employee.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[1.5fr_1fr_1fr_0.8fr_auto] lg:items-center">
+              <div key={employee.id} className="grid gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40 lg:grid-cols-[1.5fr_1fr_1fr_0.8fr_auto] lg:items-center">
                 <div className="flex items-center gap-3">
                   <Avatar size="lg">
                     {employee.avatar_url ? <AvatarImage src={employee.avatar_url} alt="" /> : null}
@@ -144,14 +153,18 @@ export function EmployeesManager({
                   {employee.department?.name ?? "—"}
                 </p>
                 <StatusBadge status={employee.is_active ? "active" : "inactive"} />
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={() => setEditing(employee)}>
-                    რედაქტირება
-                  </Button>
-                  <Button type="button" variant="ghost" onClick={() => setConfirming(employee)}>
-                    {employee.is_active ? "გათიშვა" : "გააქტიურება"}
-                  </Button>
-                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className={buttonVariants({ variant: "ghost", size: "icon" })} aria-label="მოქმედებები">
+                    <MoreHorizontal />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem render={<Link href={`/employees/${employee.id}`} />}>ნახვა</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEditing(employee)}>რედაქტირება</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setConfirming(employee)}>
+                      {employee.is_active ? "გათიშვა" : "გააქტიურება"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             ))}
           </div>

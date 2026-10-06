@@ -29,8 +29,7 @@ import {
 } from "@/lib/validation/directory";
 import type { Department, Position } from "@/types/database";
 
-const fieldClass =
-  "h-11 w-full rounded-lg border border-input bg-card px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const fieldClass = "field";
 
 export function SettingsManager({
   restaurantName,
@@ -74,7 +73,7 @@ function RestaurantNameForm({ name }: { name: string }) {
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-xl space-y-3 rounded-2xl bg-card p-5 shadow-sm ring-1 ring-foreground/10">
+    <form onSubmit={form.handleSubmit(onSubmit)} className="surface max-w-xl space-y-3 p-5">
       <h2 className="text-lg font-semibold">რესტორნის სახელი</h2>
       <Label htmlFor="displayName">სახელი</Label>
       <Input id="displayName" {...form.register("displayName")} />
@@ -104,7 +103,7 @@ function DepartmentsBlock({ departments }: { departments: Department[] }) {
       {departments.length === 0 ? (
         <EmptyState title="განყოფილება არ არის" />
       ) : (
-        <div className="divide-y overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/10">
+        <div className="divide-y overflow-hidden surface">
           {departments.map((department) => (
             <div key={department.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <p className="flex items-center gap-2 font-medium">
@@ -162,7 +161,7 @@ function PositionsBlock({ departments, positions }: { departments: Department[];
             {rows.length === 0 ? (
               <p className="text-sm text-muted-foreground">პოზიცია არ არის</p>
             ) : (
-              <div className="divide-y overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/10">
+              <div className="divide-y overflow-hidden surface">
                 {rows.map((position) => (
                   <div key={position.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <p>{position.name}</p>

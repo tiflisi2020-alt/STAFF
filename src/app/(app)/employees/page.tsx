@@ -8,7 +8,7 @@ export const metadata = {
 };
 
 type EmployeesPageProps = {
-  searchParams: Promise<{ q?: string; department?: string; position?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; department?: string; position?: string; status?: string; new?: string }>;
 };
 
 export default async function EmployeesPage({ searchParams }: EmployeesPageProps) {
@@ -34,6 +34,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
       positions={positionsResult.positions}
       filters={filters}
       error={employeesResult.error || departmentsResult.error || positionsResult.error}
+      startCreating={params.new === "1"}
     />
   );
 }

@@ -1,5 +1,5 @@
 import { demoGetEmployee, demoListEmployees } from "@/lib/demo/store";
-import { isDemoSession } from "@/lib/demo/session";
+import { currentDemoAccount, isDemoSession } from "@/lib/demo/session";
 import { one, searchTerm } from "@/lib/data/relations";
 import { userFacingError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
@@ -96,7 +96,8 @@ export async function getEmployee(id: string) {
 
 export async function getEmployeeByProfile(profileId: string) {
   if (await isDemoSession()) {
-    return null;
+    const account = await currentDemoAccount();
+    return account?.userId === profileId ? account.employeeId : null;
   }
   const supabase = await createClient();
   const { data, error } = await supabase

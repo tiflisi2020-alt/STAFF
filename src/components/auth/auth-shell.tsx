@@ -11,7 +11,7 @@ type AuthShellProps = {
 export function AuthShell({ title, description, children, footer }: AuthShellProps) {
   return (
     <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
-      <div className="grid w-full max-w-5xl overflow-hidden rounded-3xl bg-card shadow-[0_20px_60px_-36px_rgba(40,32,20,0.45)] ring-1 ring-foreground/10 lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="surface grid w-full max-w-5xl overflow-hidden shadow-[0_24px_60px_-40px_rgba(40,32,20,0.55)] lg:grid-cols-[1.05fr_0.95fr]">
         <aside className="relative hidden min-h-[32rem] flex-col justify-between overflow-hidden bg-primary px-10 py-12 text-primary-foreground lg:flex">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_42%)]" />
           <div className="relative flex items-center gap-3">

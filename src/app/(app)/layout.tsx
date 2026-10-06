@@ -3,6 +3,7 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import { AppShell } from "@/components/layout/app-shell";
 import { isDemoSession } from "@/lib/demo/session";
 import { getSessionContext } from "@/lib/auth/context";
+import { ensureShiftReminders } from "@/lib/reminders";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!context.profile.restaurant_id) {
     return (
       <div className="flex flex-1 items-center justify-center px-4 py-16">
-        <div className="max-w-md space-y-4 rounded-3xl bg-card p-6 shadow-sm ring-1 ring-foreground/10">
+        <div className="surface max-w-md space-y-4 p-6">
           <h1 className="text-2xl font-semibold">ანგარიში არ არის მიბმული</h1>
           <p className="text-sm leading-6 text-muted-foreground">
             მენეჯერმა ანგარიში რესტორნს უნდა დაუკავშიროს. სანამ ეს არ მოხდება, სამუშაო მონაცემები არ გამოჩნდება.
@@ -28,6 +29,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const personName = context.profile.full_name || context.email;
+
+  try {
+    await ensureShiftReminders();
+  } catch (error) {
+    console.error("shift reminders failed", error);
+  }
 
   return (
     <AppShell

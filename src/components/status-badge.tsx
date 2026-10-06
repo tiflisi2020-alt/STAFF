@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { cn } from "cn";
 
 const labels: Record<string, string> = {
   pending: "მოლოდინში",
@@ -19,21 +19,25 @@ const labels: Record<string, string> = {
   inactive: "არააქტიური",
 };
 
-function variantFor(status: string) {
+function toneFor(status: string) {
   if (["approved", "published", "present", "active"].includes(status)) {
-    return "default" as const;
+    return "bg-primary/10 text-primary";
   }
   if (["rejected", "peer_rejected", "cancelled", "absent"].includes(status)) {
-    return "destructive" as const;
+    return "bg-destructive/10 text-destructive";
   }
   if (["pending", "pending_peer", "pending_manager", "late", "draft"].includes(status)) {
-    return "secondary" as const;
+    return "bg-warning text-warning-foreground";
   }
-  return "outline" as const;
+  return "bg-muted text-muted-foreground";
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={variantFor(status)}>{labels[status] ?? status}</Badge>;
+  return (
+    <span className={cn("inline-flex h-6 items-center rounded-lg px-2 text-xs font-medium whitespace-nowrap", toneFor(status))}>
+      {labels[status] ?? status}
+    </span>
+  );
 }
 
 export function statusText(status: string) {

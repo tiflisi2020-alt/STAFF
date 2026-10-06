@@ -14,9 +14,10 @@ import { loginSchema, type LoginValues } from "@/lib/validation/auth";
 type LoginFormProps = {
   initialMessage?: string;
   initialTone?: "error" | "success";
+  staffLogins?: { name: string; email: string; password: string }[];
 };
 
-export function LoginForm({ initialMessage, initialTone = "error" }: LoginFormProps) {
+export function LoginForm({ initialMessage, initialTone = "error", staffLogins = [] }: LoginFormProps) {
   const [formError, setFormError] = useState<string | null>(
     initialTone === "error" ? (initialMessage ?? null) : null,
   );
@@ -84,6 +85,17 @@ export function LoginForm({ initialMessage, initialTone = "error" }: LoginFormPr
       >
         {form.formState.isSubmitting ? "მიმდინარეობს..." : "შესვლა"}
       </Button>
+
+      {staffLogins.length > 0 ? (
+        <div className="space-y-2 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 break-words">
+          <p className="font-medium">თანამშრომლის სატესტო შესვლა</p>
+          {staffLogins.map((account) => (
+            <p key={account.email}>
+              {account.name}: {account.email} · {account.password}
+            </p>
+          ))}
+        </div>
+      ) : null}
     </form>
   );
 }

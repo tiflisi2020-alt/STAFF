@@ -54,7 +54,7 @@ export function AvailabilityEditor({ employeeId, rows }: { employeeId: string; r
       }}
     >
       {days.map((day) => (
-        <div key={day.day} className="grid gap-2 rounded-2xl bg-card px-4 py-3 shadow-sm ring-1 ring-foreground/10 sm:grid-cols-[8rem_auto_1fr_1fr] sm:items-center">
+        <div key={day.day} className="surface grid gap-2 px-4 py-3 sm:grid-cols-[8rem_auto_1fr_1fr] sm:items-center">
           <p className="text-sm font-medium">{weekdayLabel(day.day)}</p>
           <label className="flex items-center gap-2 text-sm">
             <input

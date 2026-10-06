@@ -80,6 +80,31 @@ export type StoredNotification = {
   body: string;
   is_read: boolean;
   created_at: string;
+  employee_id?: string | null;
+};
+
+export type StoredTemplateShift = {
+  employee_id: string;
+  department_id: string;
+  position_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  break_minutes: number;
+};
+
+export type StoredTemplate = {
+  id: string;
+  name: string;
+  shifts: StoredTemplateShift[];
+};
+
+export type StoredPushSubscription = {
+  id: string;
+  employee_id: string | null;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
 };
 
 export type DemoStore = {
@@ -95,6 +120,9 @@ export type DemoStore = {
   swaps: StoredSwap[];
   attendance: StoredAttendance[];
   notifications: StoredNotification[];
+  templates: StoredTemplate[];
+  pushSubscriptions: StoredPushSubscription[];
+  reminded: string[];
 };
 
 const initialStore: DemoStore = {
@@ -141,6 +169,9 @@ const initialStore: DemoStore = {
   swaps: [],
   attendance: [],
   notifications: [],
+  templates: [],
+  pushSubscriptions: [],
+  reminded: [],
 };
 
 function employee(
@@ -206,6 +237,9 @@ function readStore(): DemoStore {
       swaps: parsed.swaps ?? seedSwaps(),
       attendance: parsed.attendance ?? [],
       notifications: parsed.notifications ?? seedNotifications(),
+      templates: parsed.templates ?? [],
+      pushSubscriptions: parsed.pushSubscriptions ?? [],
+      reminded: parsed.reminded ?? [],
     };
     if (!parsed.shifts) {
       writeStore(store);

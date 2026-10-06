@@ -2,6 +2,7 @@ import { isDemoSession } from "@/lib/demo/session";
 import {
   demoAttendanceDay,
   demoListNotifications,
+  demoListTemplates,
   demoListSwaps,
   demoListTimeOff,
   demoListVacations,
@@ -284,9 +285,9 @@ export async function getAttendanceDay(date: string): Promise<{ lines: Attendanc
   }
 }
 
-export async function getNotifications(): Promise<{ notifications: StoredNotification[]; error: string | null }> {
+export async function getNotifications(viewerId: string | null = null, isAdmin = true): Promise<{ notifications: StoredNotification[]; error: string | null }> {
   if (await isDemoSession()) {
-    return { notifications: demoListNotifications(), error: null };
+    return { notifications: demoListNotifications(viewerId, isAdmin), error: null };
   }
   const supabase = await createClient();
   const { data, error } = await supabase.from("notifications").select("id, title, body, is_read, created_at").order("created_at", { ascending: false });
@@ -294,6 +295,23 @@ export async function getNotifications(): Promise<{ notifications: StoredNotific
     return { notifications: [], error: userFacingError(error) };
   }
   return { notifications: (data ?? []) as StoredNotification[], error: null };
+}
+
+export async function getScheduleTemplates() {
+  if (await isDemoSession()) {
+    return { templates: demoListTemplates(), error: null };
+  }
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("schedule_templates").select("id, name").order("name");
+    if (error) return { templates: [], error: userFacingError(error) };
+    return {
+      templates: ((data ?? []) as { id: string; name: string }[]).map((item) => ({ ...item, shiftCount: 0 })),
+      error: null,
+    };
+  } catch (error) {
+    return { templates: [], error: userFacingError(error) };
+  }
 }
 
 export function shiftWeekStart(date: string) {
